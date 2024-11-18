@@ -1,0 +1,57 @@
+name: Anduril
+version: 1.0
+config-version: 2
+
+profile: 'Anduril'
+
+target-path: "target"
+clean-targets:
+  - "target"
+  - "dbt_packages"
+  
+models:
+  Anduril:
+    base: 
+      materialized: view 
+    processing: 
+      materialized: view 
+    final:  # For easier processing of outputs, I will only show necessary models as tables
+      materialized: table 
+
+seeds:
+  Anduril:
+    bin:
+      +column_types:
+        id: integer
+        name: varchar(255)
+    costs:
+      +column_types:
+        date: date
+        location_id: integer
+        item_id: integer
+        cost: numeric(10,2)
+    inventory_status:
+      +column_types:
+        id: integer
+        name: varchar(255)
+    item:
+      +column_types:
+        id: integer
+        name: varchar(255)
+    location:
+      +column_types:
+        id: integer
+        name: varchar(255)
+    transaction_line:
+      +column_types:
+        transaction_date: timestamp
+        transaction_id: integer
+        transaction_line_id: integer
+        transaction_type: varchar(50)
+        type_based_document_number: varchar(50)
+        type_based_document_status: char(1)
+        item_id: integer
+        bin_id: integer
+        inventory_status_id: integer
+        location_id: integer
+        quantity: numeric(10,2)

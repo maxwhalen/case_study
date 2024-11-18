@@ -1,0 +1,12 @@
+version: 2
+
+sources:
+  - name: Anduril
+    schema: public  # Replace this with your actual schema name
+    tables:
+      - name: transaction_line
+      - name: item
+      - name: location
+      - name: bin
+      - name: inventory_status
+      - name: costs
