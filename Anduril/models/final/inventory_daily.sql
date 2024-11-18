@@ -1,5 +1,6 @@
 WITH enriched_data AS (
     SELECT
+        tlb.transaction_line_id,
         tlb.transaction_date AS date,
         l.location,
         b.bin,
@@ -9,7 +10,7 @@ WITH enriched_data AS (
         c.cost,
         (tlb.quantity * c.cost) AS value,
         ROW_NUMBER() OVER (
-            PARTITION BY tlb.item_id, tlb.location_id, tlb.transaction_date
+            PARTITION BY tlb.transaction_line_id  
             ORDER BY c.effective_date DESC
         ) AS rank
     FROM {{ ref('transaction_line_base') }} tlb
@@ -31,5 +32,5 @@ SELECT
     SUM(quantity) AS quantity,
     SUM(value) AS value
 FROM enriched_data
-WHERE rank = 1  -- Keep only the closest effective_date
+WHERE rank = 1  
 GROUP BY date, location, bin, status, item

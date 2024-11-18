@@ -70,17 +70,6 @@ At this point our database looks like this:
 
 After this table is built though, it is clear that is at least one data issue. Starting with the fact that 67 rows do not have a a valid cost attached to them. This occurs because there is not a row in the cost table for that location and item that was creating prior to the transaction date. Some of these issues would be resolved if we use the closest date after was used retroactively, but still there are over 40 combinations of location, bin, transaction date, and inventory status that have no costs associated with them.
 
-The second point to note is the number of rows that have a quantity less than zero. The following query show that over half of the rows (53%) in the transaction_line table have a negative quantity.
-
-    ```
-    SELECT
-        (COUNT(*) FILTER (WHERE tlb.quantity < 0) * 100.0) / COUNT(*) AS pct_neg
-    FROM
-        transaction_line_base tlb
-    ```
-
-While this may represent a valid business process, maybe it represents items on back order and the financial accounting does represent a negative value, it is worth confirming that the data being collected is accurate.
-
 ## 3. Data Quality Check
 
 1. The first data quality concern I had was caught using the seed table creation. I initialized the quantity column in the *transaction_line* table as an integer, assuming orders came in discrete quantities. After loading the data I found 26 instances where quantity was not an integer. This could have been due to a variety of reasons, such as a mis-entered value or a partial order, so I made the quantity column a float to account for the reasonable possibility of partial orders. 
@@ -126,6 +115,42 @@ It is equally plausible that this is a data error though, so in the transaction_
 7. Foreign Key integrity:
 
     Using LEFT JOIN we successfully populate bin, location, item, and status names in inventory_daily without null values.
+
+8. Outliers:
+
+    There seems to be quite a few outliers in terms of cost. Many items have costs that over 100 standard deviations for their normal costs. This occurs in both directions where an expensive item will be listed for $0.50 or a cheaper item will see a sizable mark-up  The following query will provide outlier costs, some of which may be worth confirming.
+
+    ```
+    WITH cost_statistics AS (
+        SELECT
+            item_id,
+            AVG(cost) AS avg_cost,
+            STDDEV(cost) AS stddev_cost
+        FROM costs
+        GROUP BY item_id, location_id
+    ),
+    cost_deviations AS (
+        SELECT
+            c.item_id,
+            c.location_id,
+            c.date,
+            c.cost,
+            cs.avg_cost,
+            cs.stddev_cost,
+            (c.cost - cs.avg_cost) / NULLIF(cs.stddev_cost, 0) AS num_sds
+        FROM costs c
+        JOIN cost_statistics cs
+        ON c.item_id = cs.item_id
+    ),
+    outlier_costs AS (
+        SELECT *
+        FROM cost_deviations
+        WHERE ABS(num_sds) > 5
+    )
+    SELECT *
+    FROM outlier_costs
+    ORDER BY ABS(num_sds) DESC;
+    ```
 
 ## 4. Queries
 
@@ -290,9 +315,171 @@ This returns the following record:
 
 ![Query c](images/query3.png)
 
+## 5. Other Insights
+
+### Inventory Age
+
+The `inventory_age.sql` model provides a look at length of time (in days) since an item in a certain location was last touched. This is useful for identifying items that have been sitting in a location for a long time and may need to be revisted. *This query could be optimized with documentation that denotes when an item has left the system*
+
+The query is as follows:
+
+    ```
+        WITH latest_date_cte AS (
+        SELECT
+            MAX(t.transaction_date) AS latest_date
+        FROM transaction_line t
+    ),
+    transaction_data AS (
+        SELECT
+            t.item_id,
+            t.location_id,
+            t.bin_id,
+            MAX(t.transaction_date) AS last_transaction_date
+        FROM transaction_line t
+        GROUP BY t.item_id, t.location_id, t.bin_id
+    ),
+    aging_data AS (
+        SELECT
+            td.item_id,
+            td.location_id,
+            td.bin_id,
+            ld.latest_date,
+            DATE_PART('day', ld.latest_date - td.last_transaction_date) AS inventory_age
+        FROM transaction_data td
+        CROSS JOIN latest_date_cte ld
+    )
+    SELECT
+        l.name AS location_name,
+        b.name AS bin_name,
+        i.name AS item_name,
+        AVG(aging_data.inventory_age) AS average_inventory_age
+    FROM aging_data
+    LEFT JOIN location l ON aging_data.location_id = l.id
+    LEFT JOIN bin b ON aging_data.bin_id = b.id
+    LEFT JOIN item i ON aging_data.item_id = i.id
+    GROUP BY l.name, b.name, i.name
+    ```
+
+### Bin Activity
+
+When looking at the data it occurred to me that this data could be used to optimize bin sizes and labor allocation. In order to generate insight on this, I want to see how many transactions each bin has per day on average. Outliers may suggest a new bin is needed, even if it is operational, in order to break down where the most activity is occurring on a granular level. The following query provides this sort of information:
+
+ ```
+    WITH daily_bin_activity AS (
+        SELECT
+            DATE(t.transaction_date) AS activity_date,
+            t.bin_id,
+            b.name AS bin_name,
+            COUNT(*) AS transaction_count
+        FROM transaction_line t
+        LEFT JOIN bin b ON t.bin_id = b.id
+        GROUP BY DATE(t.transaction_date), t.bin_id, b.name
+    ),
+    most_active_bins AS (
+        SELECT
+            activity_date,
+            bin_id,
+            bin_name,
+            transaction_count,
+            RANK() OVER (PARTITION BY activity_date ORDER BY transaction_count DESC) AS rank
+        FROM daily_bin_activity
+    )
+    SELECT
+        bin_id,
+        bin_name,
+        AVG(transaction_count) as avg_transaction_count
+    FROM most_active_bins
+    WHERE rank = 1
+    GROUP BY bin_id, bin_name
+    ORDER BY avg_transaction_count DESC;
+    ```
+
+    The result is interesting:
+
+    ![Bin Activity](images/bin_activity.png)
+
+    It is clear there is an outlier bin where the process would be worth inspecting.
+
+### Variance in Inventory at Specific Locations
+
+In handling seasonality in demand, it is important to understand sources of variance and identify them in order to optimize labor and other resources needed to handle surges while avoiding waste in lulls. The following code creates a table for every day in the time period we are studying in order to be able to track rolling inventory quantities over a 30 day period. Once we have this data, we can calculate which combinations of location_id and item_id vary the most in order to identify seasonal items that may need to be scrutinized more when doing resource planning. The following query identifies combinations if items and locations with the most variance in inventory quantity.  
+
+    ```
+    WITH date_series AS (
+        SELECT
+            d::date AS transaction_date
+        FROM
+            generate_series(
+                (SELECT MIN(transaction_date) FROM transaction_line),
+                (SELECT MAX(transaction_date) FROM transaction_line),
+                '1 day'::interval
+            ) d
+    ),
+    filled_data AS (
+        SELECT
+            ds.transaction_date,
+            t.item_id,
+            t.location_id,
+            COALESCE(SUM(t.quantity), 0) AS daily_demand
+        FROM date_series ds
+        LEFT JOIN transaction_line t
+            ON ds.transaction_date = DATE(t.transaction_date)
+        GROUP BY ds.transaction_date, t.item_id, t.location_id
+    ),
+    rolling_demand AS (
+        SELECT
+            fd.item_id,
+            fd.location_id,
+            fd.transaction_date,
+            SUM(fd.daily_demand) OVER (
+                PARTITION BY fd.item_id, fd.location_id
+                ORDER BY fd.transaction_date
+                ROWS BETWEEN 29 PRECEDING AND CURRENT ROW
+            ) AS rolling_30_day_demand
+        FROM filled_data fd
+    ),
+    variance_calculation AS (
+        SELECT
+            item_id,
+            location_id,
+            VARIANCE(rolling_30_day_demand) AS demand_variance
+        FROM rolling_demand
+        GROUP BY item_id, location_id
+    ),
+    most_variable_demand AS (
+        SELECT
+            item_id,
+            location_id,
+            demand_variance
+        FROM variance_calculation
+        where demand_variance is not null
+        ORDER BY demand_variance DESC
+        LIMIT 5
+    )
+    SELECT
+        mvd.item_id,
+        mvd.location_id,
+        mvd.demand_variance,
+        l.name AS location_name,
+        i.name AS item_name
+    FROM most_variable_demand mvd
+    LEFT JOIN location l ON mvd.location_id = l.id
+    LEFT JOIN item i ON mvd.item_id = i.id;
+    ```
+
+    The result is as follows:
+
+    ![Variance in Inventory](images/variance.png)
+
 # Sources
 
 * https://docs.getdbt.com/
 
 * Kimball's Data Warehouse Toolkit: Chapter 3, Inventory
+
+* https://dba.stackexchange.com/questions/175963/how-do-i-generate-a-date-series-in-postgresql
+
+* https://www.startdataengineering.com/post/dbt-data-build-tool-tutorial/
+
+
 
