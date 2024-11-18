@@ -1,5 +1,8 @@
 SELECT
     transaction_date,
+    transaction_id,
+    transaction_type,
+    transaction_line_id,
     item_id,
     bin_id,
     inventory_status_id,

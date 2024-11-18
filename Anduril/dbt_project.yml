@@ -8,14 +8,14 @@ target-path: "target"
 clean-targets:
   - "target"
   - "dbt_packages"
-  
+
 models:
   Anduril:
     base: 
       materialized: view 
-    processing: 
-      materialized: view 
-    final:  # For easier processing of outputs, I will only show necessary models as tables
+    queries: 
+      materialized: table
+    final:  
       materialized: table 
 
 seeds:
