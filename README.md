@@ -4,15 +4,15 @@
 
 ## 1. Populating the Database
 
-    * Using dbt's seed functionality, we can populate the database with the data in the `seeds` folder.
+* Using dbt's seed functionality, we can populate the database with the data in the `seeds` folder.
 
-    * After unzipping the CSVs and placing them in the `seeds` folder, we can run the following command to populate the database:
+* After unzipping the CSVs and placing them in the `seeds` folder, we can run the following command to populate the database:
 
     ```
     dbt seed
     ```
 
-    * I chose to specify the column types in dbt_project.yml to ensure that the data types are correct and to catch any obvious data type errors early
+* I chose to specify the column types in dbt_project.yml to ensure that the data types are correct and to catch any obvious data type errors early
 
 At this point our database looks like this:
 
@@ -20,11 +20,11 @@ At this point our database looks like this:
 
 ## 2. Creating 'Inventory Daily' Table
 
-    * The first step was creating base models for each of the tables, where I did a little pre-processing to account for type errors I found at load time and I renamed columns where necessary in order to write more readable queries.
+* The first step was creating base models for each of the tables, where I did a little pre-processing to account for type errors I found at load time and I renamed columns where necessary in order to write more readable queries.
 
-    * I updated my project yml file to include these base models, as well as directories for processing and final models
+* I updated my project yml file to include these base models, as well as directories for processing and final models
 
-    * I created a model that creates the inventory_daily table using the following SQL query:
+* I created a model that creates the inventory_daily table using the following SQL query:
 
     ```
     WITH enriched_data AS (
