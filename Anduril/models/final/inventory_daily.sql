@@ -1,22 +1,26 @@
 WITH enriched_data AS (
     SELECT
-        btl.transaction_date AS date,
+        tlb.transaction_date AS date,
         l.location,
         b.bin,
         s.status,
         i.item,
-        btl.quantity,
+        tlb.quantity,
         c.cost,
-        (btl.quantity * c.cost) AS value
-    FROM {{ ref('transaction_line_base') }} btl
-    LEFT JOIN {{ ref('item_base') }} i ON btl.item_id = i.item_id
-    LEFT JOIN {{ ref('location_base') }} l ON btl.location_id = l.location_id
-    LEFT JOIN {{ ref('bin_base') }} b ON btl.bin_id = b.bin_id
-    LEFT JOIN {{ ref('inventory_status_base') }} s ON btl.inventory_status_id = s.inventory_status_id
+        (tlb.quantity * c.cost) AS value,
+        ROW_NUMBER() OVER (
+            PARTITION BY tlb.item_id, tlb.location_id, tlb.transaction_date
+            ORDER BY c.effective_date DESC
+        ) AS rank
+    FROM {{ ref('transaction_line_base') }} tlb
+    LEFT JOIN {{ ref('item_base') }} i ON tlb.item_id = i.item_id
+    LEFT JOIN {{ ref('location_base') }} l ON tlb.location_id = l.location_id
+    LEFT JOIN {{ ref('bin_base') }} b ON tlb.bin_id = b.bin_id
+    LEFT JOIN {{ ref('inventory_status_base') }} s ON tlb.inventory_status_id = s.inventory_status_id
     LEFT JOIN {{ ref('costs_base') }} c
-        ON btl.item_id = c.item_id
-        AND btl.location_id = c.location_id
-        AND btl.transaction_date >= c.effective_date
+        ON tlb.item_id = c.item_id
+        AND tlb.location_id = c.location_id
+        AND c.effective_date <= tlb.transaction_date
 )
 SELECT
     date,
@@ -27,4 +31,5 @@ SELECT
     SUM(quantity) AS quantity,
     SUM(value) AS value
 FROM enriched_data
+WHERE rank = 1  -- Keep only the closest effective_date
 GROUP BY date, location, bin, status, item
