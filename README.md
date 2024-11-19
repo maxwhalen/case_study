@@ -68,7 +68,7 @@ At this point our database looks like this:
 
 ![Inventory Daily Table](images/inventory_daily.png)
 
-After this table is built though, it is clear that is at least one data issue. Starting with the fact that 67 rows do not have a a valid cost attached to them. This occurs because there is not a row in the cost table for that location and item that was creating prior to the transaction date. Some of these issues would be resolved if we use the closest date after was used retroactively, but still there are over 40 combinations of location, bin, transaction date, and inventory status that have no costs associated with them.
+After this table is built though, it is clear there is at least one data issue. Starting with the fact that 67 rows do not have a a valid cost attached to them. This occurs because there is not a row in the cost table for that location and item that was creating prior to the transaction date. Some of these issues would be resolved if we use the closest date after was used retroactively, but still there are over 40 combinations of location, bin, transaction date, and inventory status that have no costs associated with them.
 
 ## 3. Data Quality Check
 
@@ -118,7 +118,7 @@ It is equally plausible that this is a data error though, so in the transaction_
 
 8. Outliers:
 
-    There seems to be quite a few outliers in terms of cost. Many items have costs that over 100 standard deviations for their normal costs. This occurs in both directions where an expensive item will be listed for $0.50 or a cheaper item will see a sizable mark-up  The following query will provide outlier costs, some of which may be worth confirming.
+    There seems to be quite a few outliers in the cost table. This is not neccessarily an error but worth pointing out. Many items have costs that over 100 standard deviations from their normal costs. This occurs in both directions where an expensive item will be listed for $0.50 or a cheaper item will see a sizable mark-up  The following query will provide outlier costs, some of which may be worth confirming by business stakeholders.
 
     ```
     WITH cost_statistics AS (
@@ -158,7 +158,7 @@ Each query can be found in models/queries/
 
 ### a.
 
-Given that there are no entries in transaction_line for item 355576 on on 2022-11-21, I will assume we can rely on the latest update for item 355576 to provide accurate information about the quantity and location/bin/status combos. In order to determine the inventory at each combination, we need to take all transaction line items pertaining to this item and find the most recent transaction date on or before 2022-11-21. This will give us the most recent snapshot of the inventory for each location/bin/status combo. Then we sum the quantities for each group to account for inflows and outflows of the product  This should give a snapshot of inventory statuses, and backorders, if any, for item 355576 on 2022-11-21.
+Given that there are no entries in transaction_line for item 355576 on on 2022-11-21, I will assume we can rely on the latest update for item 355576 to provide accurate information about the quantity and location/bin/status combos. In order to determine the inventory at each combination, we need to take all transaction line items pertaining to this item and find the most recent transaction date on or before 2022-11-21. This will give us the most recent snapshot of the inventory for each location/bin/status combo. Then we sum the quantities for each group to account for inflows and outflows of the product. This should give a snapshot of inventory statuses, and backorders, for item 355576 on 2022-11-21.
 
 The following query provides the requested information on the most recent record on or before 2022-11-21 for item 355576:
 
@@ -244,7 +244,7 @@ This returns the following record:
 
 ### c. 
 
-In order to find the value of inventory in the specified location we need to first take a snapshot of inventory on data 2022-01-01, so that means truncating data after that date and keeping the rows for each line item associated with that location. Taking the sum of quantity should give us the net quantity remaining using the transactions before 2022-01-01. Once we have the net quantity after summing the in flows and out flows we can attach the cost of each item on 2022-01-01 to determine the cost. Once we have the net quantity and cost for each item we can then sum to get the total value of the inventory. If we are only concerned with inventory on site then we can filter for negative quantities, which may represent back orders or other abnormalities.
+In order to find the value of inventory in the specified location we need to first take a snapshot of inventory on data 2022-01-01, so that means truncating data after that date and keeping the rows for each line item associated with that location. Taking the sum of quantity should give us the net quantity remaining using the transactions before 2022-01-01. Once we have the net quantity after summing the inflows and outflows we can attach the cost of each item on 2022-01-01 to determine the cost. Once we have the net quantity and cost for each item we can then sum to get the total value of the inventory. If we are only concerned with inventory on site then we can filter for negative quantities, which may represent back orders or other abnormalities.
 
     ```
     WITH collapsed_transactions AS (
@@ -364,7 +364,7 @@ The query is as follows:
 
 When looking at the data it occurred to me that this data could be used to optimize bin sizes and labor allocation. In order to generate insight on this, I want to see how many transactions each bin has per day on average. Outliers may suggest a new bin is needed, even if it is operational, in order to break down where the most activity is occurring on a granular level. The following query provides this sort of information:
 
- ```
+    ```
     WITH daily_bin_activity AS (
         SELECT
             DATE(t.transaction_date) AS activity_date,
@@ -394,11 +394,11 @@ When looking at the data it occurred to me that this data could be used to optim
     ORDER BY avg_transaction_count DESC;
     ```
 
-    The result is interesting:
+The result is interesting:
 
-    ![Bin Activity](images/bin_activity.png)
+![Bin Activity](images/bin_activity.png)
 
-    It is clear there is an outlier bin where the process would be worth inspecting.
+It is clear there is an outlier bin where the process would be worth inspecting.
 
 ### Variance in Inventory at Specific Locations
 
@@ -467,9 +467,16 @@ In handling seasonality in demand, it is important to understand sources of vari
     LEFT JOIN item i ON mvd.item_id = i.id;
     ```
 
-    The result is as follows:
+The result is as follows:
 
-    ![Variance in Inventory](images/variance.png)
+![Variance in Inventory](images/variance.png)
+
+# Wrap-Up
+
+Thank you for the opportunity to work on this project. I have thoroughly enjoyed getting to know the team over this process and am eager to hear your feedback!
+
+Thank you,
+Max
 
 # Sources
 
