@@ -102,6 +102,8 @@ It is equally plausible that this is a data error though, so in the transaction_
 
     * When grouping the transaction_line table by transaction_id and transaction_line_id we have a number of duplicate rows. We have multiple cases where there are 337 rows with this grouping. Assuming each transactin_line represents a line item on an invoice or similar document it seems illogical that there would be multiple rows with the same transaction_id and transaction_line_id. This issue persists when adding more variables to the grouping, such as location_id, item_id, and bin_id. This could be a data entry error or a system error, but it is worth investigating further.
 
+    *Revision: It is now clear to me that this is due to the fact that the transaction_line table is a log of transactions and not a snapshot of inventory at a given time*
+
     * None of the dimension tables appear to have any duplicates.
 
 5. Checking for nulls:
