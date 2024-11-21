@@ -1,4 +1,4 @@
-# Anduril Take Home Assignment
+# Take Home Assignment
 
 # Assignment 
 
